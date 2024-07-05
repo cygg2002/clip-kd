@@ -22,5 +22,5 @@ torchrun --nproc_per_node 8 -m \
     --t-model ViT-B-16 \
     --t-model-checkpoint ./pretrained_models/vit_b_16.pt \
     --logs path/to/logs/ \
-    --alpha_ckd_loss 1. \
+    --alpha_afd_loss 1. \
     --tag distill-new 
