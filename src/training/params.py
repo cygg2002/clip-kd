@@ -15,13 +15,13 @@ def parse_args(args):
     parser.add_argument(
         "--train-data",
         type=str,
-        default=None,
+        default="/home/111_wcy/work/clip-kd/Hierarchical-KD/CLIP-KD-wcy/datasets/val.csv",
         help="Path to csv filewith training data",
     )
     parser.add_argument(
         "--val-data",
         type=str,
-        default=None,
+        default="/home/111_wcy/work/clip-kd/Hierarchical-KD/CLIP-KD-wcy/datasets/test.csv",
         help="Path to csv file with validation data",
     )
     parser.add_argument(
@@ -161,16 +161,16 @@ def parse_args(args):
         "--vl-batch-size", type=int, default=64, help="Batch size per GPU."
     )
     parser.add_argument(
-        "--epochs", type=int, default=32, help="Number of epochs to train for."
+        "--epochs", type=int, default=1, help="Number of epochs to train for."
     )
     parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
     parser.add_argument("--beta1", type=float, default=None, help="Adam beta 1.")
     parser.add_argument("--beta2", type=float, default=None, help="Adam beta 2.")
     parser.add_argument("--eps", type=float, default=None, help="Adam epsilon.")
-    parser.add_argument("--alpha_ckd_loss", type=float, default=0., help="CRD loss weight")
-    parser.add_argument("--alpha_icl_loss", type=float, default=0., help="ICL_loss weight")
+    parser.add_argument("--alpha_ckd_loss", type=float, default=1., help="CRD loss weight")
+    parser.add_argument("--alpha_icl_loss", type=float, default=1., help="ICL_loss weight")
     parser.add_argument("--alpha_cross_kd_loss", type=float, default=0., help="cross_kd_loss weight")
-    parser.add_argument("--alpha_fd_loss", type=float, default=0., help="FD_loss weight")
+    parser.add_argument("--alpha_fd_loss", type=float, default=2000, help="FD_loss weight")
     parser.add_argument("--alpha_gd_loss", type=float, default=0., help="gd_loss weight")
     parser.add_argument("--alpha_afd_loss", type=float, default=0., help="AFD_loss weight")
     
@@ -222,26 +222,26 @@ def parse_args(args):
     parser.add_argument(
         "--model",
         type=str,
-        default="RN50",
+        default="ViT-B-32",
         help="Name of the vision backbone to use.",
     )
     parser.add_argument(
         "--model-checkpoint",
         type=str,
-        default="",
+        default="/home/111_wcy/work/clip-kd/Hierarchical-KD/CLIP-KD-wcy/models/ViT-B-32_openclip.pt",
         help="model checkpoint path",
     )
     
     parser.add_argument(
         "--t-model",
         type=str,
-        default="RN50",
+        default="ViT-L-14",
         help="Name of the teacher vision backbone to use.",
     )
     parser.add_argument(
         "--t-model-checkpoint",
         type=str,
-        default="RN50",
+        default="/home/111_wcy/work/clip-kd/Hierarchical-KD/CLIP-KD-wcy/models/bioclip2/open_clip_pytorch_model.bin",
         help="teacher checkpoint path",
     )
     parser.add_argument(
@@ -394,7 +394,7 @@ def parse_args(args):
     )
     parser.add_argument(
         "--lock-text",
-        default=False,
+        default=True,
         action='store_true',
         help="Lock full text tower by disabling gradients.",
     )
@@ -410,6 +410,19 @@ def parse_args(args):
         action='store_true',
         help="Freeze BatchNorm running stats in image tower for any locked layers.",
     )
+
+
+#新增
+    parser.add_argument("--taxo_jsonl", type=str, default="/home/111_wcy/work/clip-kd/Hierarchical-KD/CLIP-KD-main/datasets/out_val_json.jsonl",
+                        help="JSONL path containing taxo_path and prompts (for taxonomy vocab building).")
+
+    parser.add_argument("--alpha_taxo_max", type=float, default=0.1)
+    parser.add_argument("--taxo_warmup_epochs", type=float, default=2.0,
+                        help="Ç°¶àÉÙ¸öepoch alpha_taxo=0")
+    parser.add_argument("--taxo_ramp_epochs", type=float, default=4.0,
+                        help="warmup½áÊøºó£¬ÓÃ¶àÉÙ¸öepochÏßÐÔÉýµ½ alpha_taxo_max")
+
+
 
 
     args = parser.parse_args(args)

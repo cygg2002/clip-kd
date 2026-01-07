@@ -31,225 +31,28 @@ from open_clip.tokenizer import HFTokenizer
 from .imagenet_zeroshot_data import openai_imagenet_template
 from .class_sampler import MPerClassSampler
 
-
-import os
-import logging
-import random
-from pathlib import Path
-from typing import Optional, Callable, List
-
-import pandas as pd
-from torch.utils.data import Dataset
-from PIL import Image, ImageFile
-
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-
 class CsvDataset(Dataset):
-    """
-    CsvDataset:
-      - ×Ô¶¯¼ì²â·Ö¸ô·û / ´¦Àí BOM
-      - ¼æÈÝ "filepath,text" ºÏ²¢µ½Ò»ÁÐµÄÇé¿ö£¨×Ô¶¯²ð·Ö£©
-      - Ö§³Ö¾ø¶ÔÂ·¾¶¡¢Ïà¶ÔÂ·¾¶£¨Ïà¶Ô data_root£©
-      - ÑµÁ·Ê±¶Ô»µÍ¼¸üÂ³°ô£ºÓöµ½´ò²»¿ªµÄÍ¼Æ¬»á³¢ÊÔ»»Ò»ÕÅ£¬¶ø²»ÊÇÖ±½Ó±ÀÀ£
-    """
-    def __init__(
-        self,
-        data_root: str,
-        input_filename: str,
-        transforms: Callable,
-        img_key: Optional[str],
-        caption_key: Optional[str],
-        sep: str = "\t",
-        tokenizer: Optional[Callable] = None,
-    ):
-        logging.debug(f'Loading csv data from {input_filename}. requested sep={sep!r}')
+    def __init__(self, data_root, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None):
+        logging.debug(f'Loading csv data from {input_filename}.')
+        df = pd.read_csv(input_filename, sep=sep)
 
-        # 1) Ê×ÏÈ³¢ÊÔÊ¹ÓÃ´«ÈëµÄ sep£¨ÇÒÊ¹ÓÃ utf-8-sig È¥ BOM£©
-        df = None
-        tried = []
-        try:
-            df = pd.read_csv(input_filename, sep=sep, encoding="utf-8-sig")
-            tried.append(("sep", sep))
-        except Exception as e:
-            logging.debug(f"read_csv with sep={sep!r} failed: {e}")
-
-        # 2) Èç¹û¶ÁÈ¡ºóÖ»ÓÐÒ»ÁÐ»ò df Îª None£¬³¢ÊÔÈÃ pandas ×Ô¶¯ÍÆ¶Ï·Ö¸ô·û
-        if df is None or (len(df.columns) == 1):
-            try:
-                df = pd.read_csv(input_filename, sep=None, engine="python", encoding="utf-8-sig")
-                tried.append(("auto", None))
-                logging.debug("read_csv: used auto sep inference (engine='python').")
-            except Exception as e:
-                logging.debug(f"auto sep inference failed: {e}")
-                try:
-                    df = pd.read_csv(input_filename, sep=None, engine="python")
-                    tried.append(("auto_noenc", None))
-                except Exception as e2:
-                    raise RuntimeError(
-                        f"Failed to read CSV {input_filename} with any tried method. "
-                        f"Errors: {e}, {e2}"
-                    )
-
-        # 3) ¹æ·¶ÁÐÃû£ºÈ¥ BOM ÓëÊ×Î²¿Õ°×
-        df.columns = df.columns.astype(str).str.replace("\ufeff", "", regex=False).str.strip()
-        cols = list(df.columns)
-        logging.debug(f"CSV columns after read ({tried}): {cols}")
-
-        # 4) ÈôÖ»ÓÐÒ»ÁÐÇÒÏñ "path,caption"£¬³¢ÊÔ²ð³ÉÁ½ÁÐ
-        if len(cols) == 1:
-            col0 = cols[0]
-            sample_vals = df[col0].astype(str).head(20).tolist()
-            count_with_comma = sum(1 for v in sample_vals if "," in v)
-            if count_with_comma >= max(1, len(sample_vals) // 4):
-                logging.warning(
-                    f"CSV appears to have merged columns (one column '{col0}' with commas). "
-                    "Attempting to split on first comma into two columns (path, caption)."
-                )
-                split_df = df[col0].astype(str).str.split(r",\s*", n=1, expand=True)
-                split_df.columns = ["filepath", "text"] if split_df.shape[1] == 2 else ["filepath", "text"]
-                df = split_df
-                cols = list(df.columns)
-                logging.debug(f"After split, columns: {cols}")
-            else:
-                logging.debug("Single-column CSV but not enough comma samples to auto-split.")
-
-        # 5) ÇåÀí¼°½âÎö img_key / caption_key
-        cols_lower_map = {c.lower().strip(): c for c in cols}
-
-        def resolve_key(requested_key, fallback_candidates):
-            if requested_key is None:
-                requested_key = ""
-            rk = str(requested_key).lower().strip()
-            if rk in cols_lower_map:
-                return cols_lower_map[rk]
-            # ¾«È·Ð¡Ð´Æ¥Åä
-            for c in cols:
-                if c.lower().strip() == rk:
-                    return c
-            # È¥ÏÂ»®Ïß/¿Õ¸ñÔÙÆ¥Åä
-            rk_norm = rk.replace("_", "").replace(" ", "")
-            for c in cols:
-                if c.lower().strip().replace("_", "").replace(" ", "") == rk_norm:
-                    return c
-            # ×Ó´®Æ¥Åä
-            for c in cols:
-                if rk and rk in c.lower():
-                    return c
-            # fallback candidates
-            for cand in fallback_candidates:
-                cand = cand.lower().strip()
-                if cand in cols_lower_map:
-                    return cols_lower_map[cand]
-                for c in cols:
-                    if cand == c.lower().strip() or cand in c.lower():
-                        return c
-            return None
-
-        img_candidates = [
-            "filepath",
-            "file_path",
-            "file",
-            "filename",
-            "image",
-            "image_path",
-            "img_path",
-            "path",
-        ]
-        text_candidates = ["text", "caption", "label", "labels", "description", "sentence"]
-
-        img_col = resolve_key(img_key, img_candidates)
-        caption_col = resolve_key(caption_key, text_candidates)
-
-        if img_col is None:
-            logging.warning(
-                f"Could not resolve image column for requested key '{img_key}'. "
-                f"Available: {cols}. Falling back to first column."
-            )
-            if len(cols) == 0:
-                raise ValueError(f"CSV {input_filename} contains no columns")
-            img_col = cols[0]
-
-        if caption_col is None:
-            if len(cols) > 1:
-                logging.warning(
-                    f"Could not resolve caption column for requested key '{caption_key}'. "
-                    f"Available: {cols}. Falling back to second column."
-                )
-                caption_col = cols[1]
-            else:
-                logging.warning("CSV has only one column; captions will be empty.")
-                caption_col = None
-
-        # 6) ¶ÁÈ¡Îª list
-        self.images: List[str] = df[img_col].astype(str).tolist()
-        if caption_col is not None:
-            self.captions: List[str] = df[caption_col].astype(str).tolist()
-        else:
-            self.captions = ["" for _ in range(len(self.images))]
-
+        self.images = df[img_key].tolist()
+        self.captions = df[caption_key].tolist()
         self.transforms = transforms
         self.root = data_root
-        self.input_filename = input_filename
+        
+        logging.debug('Done loading data.')
 
-        # tokenizer fallback
-        if tokenizer is None:
-            self.tokenize = lambda texts: [str(t) for t in texts]
-        else:
-            self.tokenize = tokenizer
-
-        logging.debug(f"Done loading CSV {input_filename}. #items={len(self.images)}")
+        self.tokenize = tokenizer
 
     def __len__(self):
         return len(self.captions)
 
-    def _resolve_path(self, raw_path: str) -> str:
-        """½« CSV ÖÐµÄÒ»ÐÐÂ·¾¶½âÎö³ÉÕæÊµÎÄ¼þÂ·¾¶£¬Ö§³Ö¾ø¶Ô/Ïà¶ÔÂ·¾¶¡£"""
-        raw_path = str(raw_path).strip()
-        if os.path.isabs(raw_path):
-            return raw_path
-        # Ïà¶Ô data_root
-        return os.path.join(self.root, raw_path)
-
-    def __getitem__(self, idx: int):
-        if idx < 0 or idx >= len(self.captions):
-            raise IndexError("index out of range")
-
-        # ÎªÁËÔÚÓöµ½»µÍ¼Ê±¸üÂ³°ô£¬ÎÒÃÇÔÊÐíÖØÊÔÈô¸É´Î£¨Ëæ»ú»»Ò»ÕÅ£©
-        max_retry = 3
-        trial = 0
-        last_err: Optional[Exception] = None
-
-        cur_idx = idx
-        while trial < max_retry:
-            raw_path = str(self.images[cur_idx])
-            img_path = self._resolve_path(raw_path)
-
-            try:
-                image_file = Image.open(img_path).convert("RGB")
-                # Õý³£¶Áµ½Í¼¾Í break
-                break
-            except Exception as e:
-                # ¼ÇÂ¼Ò»ÏÂ£¬µ«²»Ö±½ÓÕ¨µô£¬Ëæ»ú»»Ò»ÕÅÖØÊÔ
-                logging.warning(
-                    f"[CsvDataset] Failed to open image at '{img_path}' "
-                    f"(from CSV entry '{raw_path}', idx={cur_idx}). Error: {e}"
-                )
-                last_err = e
-                trial += 1
-                # Ëæ»ú»»Ò»¸öÐÂµÄ idx
-                cur_idx = random.randint(0, len(self.captions) - 1)
-
-        # Èç¹ûÖØÊÔ¶à´ÎÈÔÊ§°Ü£¬²ÅÕæÕýÅ×³öÒì³£
-        if trial == max_retry:
-            raise RuntimeError(
-                f"Failed to open image after {max_retry} attempts. "
-                f"Last path='{img_path}' (from CSV '{self.input_filename}'). "
-                f"Original error: {last_err}"
-            )
-
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root, str(self.images[idx]))
+        image_file = Image.open(img_path)
         images = self.transforms(image_file)
-        texts = self.tokenize([str(self.captions[cur_idx])])[0]
+        texts = self.tokenize([str(self.captions[idx])])[0]
         return images, texts
 
 
