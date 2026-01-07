@@ -9,3 +9,5 @@ from .pretrained import list_pretrained, list_pretrained_models_by_tag, list_pre
     get_pretrained_url, download_pretrained_from_url, is_pretrained_cfg, get_pretrained_cfg, download_pretrained
 from .tokenizer import SimpleTokenizer, tokenize
 from .transform import image_transform
+from .taxo_distill_loss import TaxoDistillLoss, TaxoDistillConfig
+

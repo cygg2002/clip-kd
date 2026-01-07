@@ -61,28 +61,25 @@ def gather_features(
 
     return all_image_features, all_text_features
 
-
 def sim_stats(all_image_features, all_text_features, logits_per_image, logits_per_text, labels, num_logits):
     img_num = all_image_features.size(0)
-    device = all_image_features.device
-    mask = torch.eye(img_num, device=device)
-
-    img_to_img_sim = ((all_image_features @ all_image_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num - 1))
-    txt_to_txt_sim = ((all_text_features @ all_text_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num - 1))
-    img_to_img_nn_sim = ((all_image_features @ all_image_features.T) * (1 - mask) - 2 * mask).detach().max(dim=1)[0].mean()
-    txt_to_txt_nn_sim = ((all_text_features @ all_text_features.T) * (1 - mask) - 2 * mask).detach().max(dim=1)[0].mean()
+    mask = torch.eye(img_num).cuda()
+    img_to_img_sim = ((all_image_features @ all_image_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num-1))
+    txt_to_txt_sim = ((all_text_features @ all_text_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num-1))
+    img_to_img_nn_sim = ((all_image_features @ all_image_features.T) * (1 - mask)-2 * mask).detach().max(dim=1)[0].mean()
+    txt_to_txt_nn_sim = ((all_text_features @ all_text_features.T) * (1 - mask)-2 * mask).detach().max(dim=1)[0].mean()
     img_to_pos_txt_sim = ((all_image_features @ all_text_features.T) * mask).detach().sum() / img_num
-    img_to_neg_txt_sim = ((all_image_features @ all_text_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num - 1))
-    img_to_hard_neg_txt_sim = (((all_image_features @ all_text_features.T) * (1 - mask) + mask * (-2.)).max(dim=1))[0].mean()
+    img_to_neg_txt_sim = ((all_image_features @ all_text_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num-1))
+    img_to_hard_neg_txt_sim = (((all_image_features @ all_text_features.T) * (1 - mask)+ mask * (-2.)).max(dim=1))[0].mean()
     img_to_pos_minus_neg_txt_sim = img_to_pos_txt_sim - img_to_neg_txt_sim
     img_to_pos_minus_hard_neg_txt_sim = img_to_pos_txt_sim - img_to_hard_neg_txt_sim
-
+    
     txt_to_pos_img_sim = ((all_text_features @ all_image_features.T) * mask).detach().sum() / img_num
-    txt_to_neg_img_sim = ((all_text_features @ all_image_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num - 1))
-    txt_to_hard_neg_img_sim = (((all_text_features @ all_image_features.T) * (1 - mask) + mask * (-2.)).max(dim=1))[0].mean()
+    txt_to_neg_img_sim = ((all_text_features @ all_image_features.T) * (1 - mask)).detach().sum() / (img_num * (img_num-1))
+    txt_to_hard_neg_img_sim = (((all_text_features @ all_image_features.T) * (1 - mask)+ mask * (-2.)).max(dim=1))[0].mean()
     txt_to_pos_minus_neg_img_sim = txt_to_pos_img_sim - txt_to_neg_img_sim
     txt_to_pos_minus_hard_neg_img_sim = txt_to_pos_img_sim - txt_to_hard_neg_img_sim
-
+    
     targets = F.one_hot(labels, num_classes=logits_per_image.size(1)).float()
     prob_per_image = F.softmax(logits_per_image, 1)
     neg_prob_per_image = prob_per_image.clone()
@@ -94,7 +91,7 @@ def sim_stats(all_image_features, all_text_features, logits_per_image, logits_pe
 
     img_anchor_txt_pos_neg_grad_sim = (img_anchor_grad_from_pos * img_anchor_grad_from_neg).sum(dim=1).mean()
     img_anchor_txt_pos_hard_neg_grad_sim = (img_anchor_grad_from_pos * img_anchor_grad_from_hard_neg).sum(dim=1).mean()
-
+    
     prob_per_txt = F.softmax(logits_per_text, 1)
     neg_prob_per_txt = prob_per_txt.clone()
     neg_prob_per_txt[mask.bool()] = 0.
@@ -106,26 +103,25 @@ def sim_stats(all_image_features, all_text_features, logits_per_image, logits_pe
     txt_anchor_img_pos_neg_grad_sim = (txt_anchor_grad_from_pos * txt_anchor_grad_from_neg).sum(dim=1).mean()
     txt_anchor_img_pos_hard_neg_grad_sim = (txt_anchor_grad_from_pos * txt_anchor_grad_from_hard_neg).sum(dim=1).mean()
 
-    sims = [
-        img_to_img_sim.item(),
-        txt_to_txt_sim.item(),
-        img_to_pos_txt_sim.item(),
-        img_to_neg_txt_sim.item(),
-        img_to_hard_neg_txt_sim.item(),
-        img_to_pos_minus_neg_txt_sim.item(),
-        img_to_pos_minus_hard_neg_txt_sim.item(),
-        txt_to_pos_img_sim.item(),
-        txt_to_neg_img_sim.item(),
-        txt_to_hard_neg_img_sim.item(),
-        txt_to_pos_minus_neg_img_sim.item(),
-        txt_to_pos_minus_hard_neg_img_sim.item(),
-        img_anchor_txt_pos_neg_grad_sim.item(),
-        img_anchor_txt_pos_hard_neg_grad_sim.item(),
-        txt_anchor_img_pos_neg_grad_sim.item(),
-        txt_anchor_img_pos_hard_neg_grad_sim.item(),
-        img_to_img_nn_sim.item(),
-        txt_to_txt_nn_sim.item(),
-    ]
+    
+    sims = [img_to_img_sim.item(), 
+            txt_to_txt_sim.item(), 
+            img_to_pos_txt_sim.item(), 
+            img_to_neg_txt_sim.item(), 
+            img_to_hard_neg_txt_sim.item(),
+            img_to_pos_minus_neg_txt_sim.item(), 
+            img_to_pos_minus_hard_neg_txt_sim.item(),
+            txt_to_pos_img_sim.item(),
+            txt_to_neg_img_sim.item(),
+            txt_to_hard_neg_img_sim.item(),
+            txt_to_pos_minus_neg_img_sim.item(),
+            txt_to_pos_minus_hard_neg_img_sim.item(),
+            img_anchor_txt_pos_neg_grad_sim.item(),
+            img_anchor_txt_pos_hard_neg_grad_sim.item(),
+            txt_anchor_img_pos_neg_grad_sim.item(),
+            txt_anchor_img_pos_hard_neg_grad_sim.item(),
+            img_to_img_nn_sim.item(),
+            txt_to_txt_nn_sim.item(),]
 
     return sims
 
@@ -136,12 +132,12 @@ def get_grad(p, k, tau, targets):
     prob = F.softmax(logits, 1)
     grad_p = (prob - targets) @ k / tau / targets.size(0)
     embed_size = p.size(1)
-    prob_targets_repeat = (prob - targets).t().repeat(1, embed_size).view(-1, embed_size, p.size(0))
+    prob_targets_repeat = (prob - targets).t().repeat(1, embed_size).view(-1,embed_size, p.size(0))
     grad_k = (prob_targets_repeat * (p.t() / tau).unsqueeze(0)).sum(-1) / targets.size(0)
 
     return grad_p, grad_k
-
-
+     
+    
 class ClipLoss(nn.Module):
 
     def __init__(
@@ -192,15 +188,15 @@ class ClipLoss(nn.Module):
                 self.prev_num_logits = num_logits
         else:
             labels = self.labels[device]
-
         total_loss = (
             F.cross_entropy(logits_per_image, labels) +
             F.cross_entropy(logits_per_text, labels)
-        ) / 2
-
+            ) / 2
+        
         return total_loss
 
 
+    
 class DistillKL(nn.Module):
     """Distilling the Knowledge in a Neural Network"""
     def __init__(self, T):
@@ -208,11 +204,10 @@ class DistillKL(nn.Module):
         self.T = T
 
     def forward(self, y_s, y_t):
-        p_s = F.log_softmax(y_s / self.T, dim=1)
-        p_t = F.softmax(y_t / self.T, dim=1)
-        loss = F.kl_div(p_s, p_t, reduction='batchmean') * (self.T ** 2)
+        p_s = F.log_softmax(y_s/self.T, dim=1)
+        p_t = F.softmax(y_t/self.T, dim=1)
+        loss = F.kl_div(p_s, p_t, reduction='batchmean') * (self.T**2)
         return loss
-
 
 class KDClipLoss(nn.Module):
 
@@ -238,11 +233,11 @@ class KDClipLoss(nn.Module):
         if args.t_embed_dim != args.s_embed_dim:
             self.visual_proj = nn.Linear(args.s_embed_dim, args.t_embed_dim)
             self.text_proj = nn.Linear(args.s_embed_dim, args.t_embed_dim)
-
+        
         if args.alpha_afd_loss > 0.:
-            self.visual_fusion_proj = nn.Linear(args.s_embed_dim + args.t_embed_dim, args.s_embed_dim)
-            self.text_fusion_proj = nn.Linear(args.s_embed_dim + args.t_embed_dim, args.s_embed_dim)
-
+            self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
+            self.text_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
+            
         # cache state
         self.prev_num_logits = 0
         self.kl_loss = DistillKL(T=1)
@@ -250,13 +245,10 @@ class KDClipLoss(nn.Module):
         self.fusion_logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.labels = {}
 
-    def forward(self, image_features, text_features, logit_scale,
-                t_image_features, t_text_features, t_logit_scale):
-
+    def forward(self, image_features, text_features, logit_scale, \
+        t_image_features, t_text_features, t_logit_scale):
         device = image_features.device
-
         if self.world_size > 1:
-            # ===== ¶à¿¨ =====
             all_image_features, all_text_features = gather_features(
                 image_features, text_features,
                 self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
@@ -271,32 +263,16 @@ class KDClipLoss(nn.Module):
             normalized_text_features = F.normalize(text_features, dim=1)
             normalized_all_image_features = F.normalize(all_image_features, dim=1)
             normalized_all_text_features = F.normalize(all_text_features, dim=1)
-
+            
             if self.local_loss:
                 logits_per_image = logit_scale * normalized_image_features @ normalized_all_text_features.T
                 logits_per_text = logit_scale * normalized_text_features @ normalized_all_image_features.T
             else:
                 logits_per_image = logit_scale * normalized_all_image_features @ normalized_all_text_features.T
                 logits_per_text = logits_per_image.T
-
         else:
-            # ===== µ¥¿¨ =====
-            # µ±Ç° batch Ö±½Óµ±×÷ all_features
-            all_image_features = image_features
-            all_text_features = text_features
-            t_all_image_features = t_image_features
-            t_all_text_features = t_text_features
-
-            # ¹éÒ»»¯ºóËã logits£¨ºÍ¶à¿¨·ÖÖ§±£³ÖÒ»ÖÂ£©
-            normalized_image_features = F.normalize(image_features, dim=1)
-            normalized_text_features = F.normalize(text_features, dim=1)
-
             logits_per_image = logit_scale * normalized_image_features @ normalized_text_features.T
             logits_per_text = logit_scale * normalized_text_features @ normalized_image_features.T
-
-            # teacher µÄ logits Ò²ÒªÔÚµ¥¿¨ÏÂËã³öÀ´
-            t_logits_per_image = t_logit_scale * t_all_image_features @ t_all_text_features.T
-            t_logits_per_text = t_logits_per_image.T
 
         # calculated ground-truth and cache if enabled
         num_logits = logits_per_image.shape[0]
@@ -310,61 +286,56 @@ class KDClipLoss(nn.Module):
         else:
             labels = self.labels[device]
 
-        # Èç¹û student / teacher Î¬¶È²»Í¬£¬ÏÈ°Ñ student Í¶µ½ teacher Î¬¶È
         if self.args.t_embed_dim != self.args.s_embed_dim:
             all_image_features = self.visual_proj(all_image_features)
             all_text_features = self.text_proj(all_text_features)
-
+            
         normalized_all_image_features = F.normalize(all_image_features, dim=1)
         normalized_all_text_features = F.normalize(all_text_features, dim=1)
-
-        fd_loss = F.mse_loss(normalized_all_image_features, t_all_image_features) + \
-                  F.mse_loss(normalized_all_text_features, t_all_text_features)
-
+        fd_loss = F.mse_loss(normalized_all_image_features, t_all_image_features) +\
+            F.mse_loss(normalized_all_text_features, t_all_text_features)
+            
         logits_per_s_image_to_t_text = self.cross_logit_scale * normalized_all_image_features @ t_all_text_features.T
         logits_per_s_text_to_t_image = self.cross_logit_scale * normalized_all_text_features @ t_all_image_features.T
-
+        
         task_loss = (
             F.cross_entropy(logits_per_image, labels) +
             F.cross_entropy(logits_per_text, labels)
-        ) / 2
-
-        # ³õÊ¼»¯¼¸¸ö loss£¨¸úËæµ±Ç° device£©
-        ckd_loss = torch.zeros([], device=device)
-        icl_loss = torch.zeros([], device=device)
-        cross_kd_loss = torch.zeros([], device=device)
-        gd_loss = torch.zeros([], device=device)
-        afd_loss = torch.zeros([], device=device)
-
-        # image/text -> teacher µÄ CE
+            ) / 2
+        
+        ckd_loss = torch.tensor(0.).cuda() 
+        icl_loss = torch.tensor(0.).cuda() 
+        cross_kd_loss = torch.tensor(0.).cuda() 
+        gd_loss = torch.tensor(0.).cuda() 
+        afd_loss = torch.tensor(0.).cuda() 
+        
         icl_loss = (
             F.cross_entropy(logits_per_s_image_to_t_text, labels) +
             F.cross_entropy(logits_per_s_text_to_t_image, labels)
-        ) / 2
-
-        # student logits vs teacher logits µÄ KL
-        ckd_loss = (self.kl_loss(logits_per_image, t_logits_per_image.detach()) +
-                    self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2
-
-        # cross-logits vs teacher logits µÄ KL
-        cross_kd_loss = (self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +
-                         self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2
-
-        # GD loss
+            ) / 2
+        
+        ckd_loss = (self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
+            self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2
+        
+        cross_kd_loss = (self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
+            self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2
+        #kd_loss = (F.cross_entropy(logits_per_image, F.softmax(, dim=1)) \
+        #    + F.cross_entropy(logits_per_text, F.softmax(t_logits_per_text.detach(), dim=1))) / 2
+        
+        
         if self.args.alpha_gd_loss > 0.:
             with torch.no_grad():
                 t_grad_p_img, t_grad_k_txt = get_grad(t_all_image_features, t_all_text_features, t_logit_scale, labels)
                 t_grad_p_txt, t_grad_k_img = get_grad(t_all_text_features, t_all_image_features, t_logit_scale, labels)
-
+            
             s_grad_p_img, s_grad_k_txt = get_grad(normalized_all_image_features, normalized_all_text_features, logit_scale, labels)
             s_grad_p_txt, s_grad_k_img = get_grad(normalized_all_text_features, normalized_all_image_features, logit_scale, labels)
 
-            gd_loss = F.mse_loss(s_grad_p_img, t_grad_p_img.detach()) + \
-                      F.mse_loss(s_grad_k_txt, t_grad_k_txt.detach()) + \
-                      F.mse_loss(s_grad_p_txt, t_grad_p_txt.detach()) + \
-                      F.mse_loss(s_grad_k_img, t_grad_k_img.detach())
-
-        # AFD loss
+            gd_loss = F.mse_loss(s_grad_p_img, t_grad_p_img.detach()) +\
+                F.mse_loss(s_grad_k_txt, t_grad_k_txt.detach()) +\
+                    F.mse_loss(s_grad_p_txt, t_grad_p_txt.detach()) +\
+                        F.mse_loss(s_grad_k_img, t_grad_k_img.detach()) 
+        
         if self.args.alpha_afd_loss > 0.:
             img_fusion_feat = torch.cat([normalized_all_image_features, t_all_image_features], dim=1)
             txt_fusion_feat = torch.cat([normalized_all_text_features, t_all_text_features], dim=1)
@@ -372,21 +343,20 @@ class KDClipLoss(nn.Module):
             txt_fusion_feat = self.text_fusion_proj(txt_fusion_feat)
             img_fusion_feat = F.normalize(img_fusion_feat, dim=1)
             txt_fusion_feat = F.normalize(txt_fusion_feat, dim=1)
-
+            
             logits_per_fusion_image = self.fusion_logit_scale * img_fusion_feat @ txt_fusion_feat.T
             logits_per_fusion_text = logits_per_fusion_image.T
             afd_loss = (
                 F.cross_entropy(logits_per_fusion_image, labels) +
                 F.cross_entropy(logits_per_fusion_text, labels)
             ) / 2
-
-        # ¼ÓÈ¨
+            
+            
         ckd_loss = self.args.alpha_ckd_loss * ckd_loss
         icl_loss = self.args.alpha_icl_loss * icl_loss
         cross_kd_loss = self.args.alpha_cross_kd_loss * cross_kd_loss
         fd_loss = self.args.alpha_fd_loss * fd_loss
         gd_loss = self.args.alpha_gd_loss * gd_loss
         afd_loss = self.args.alpha_afd_loss * afd_loss
-
+        
         return task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss
-
